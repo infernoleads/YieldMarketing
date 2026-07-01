@@ -1,0 +1,228 @@
+// Yield Transfers — Prisma schema
+// PostgreSQL data model for the insurance-lead CRM.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  super_admin
+  agency_owner
+  producer
+  telemarketer
+}
+
+enum LeadStatus {
+  new
+  contacted
+  quoted
+  sold
+  lost
+  follow_up
+}
+
+enum HomeOwnership {
+  own
+  rent
+}
+
+enum AppointmentStatus {
+  new
+  contacted
+  scheduled
+  closed
+}
+
+enum ReportFrequency {
+  hourly
+  daily
+  weekly
+  biweekly
+  monthly
+  quarterly
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  role         Role      @default(telemarketer)
+  lastSeen     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // An agency_owner owns exactly one agency (optional back-relation).
+  ownedAgency  Agency?   @relation("AgencyOwner")
+
+  // Producers / telemarketers belong to an agency.
+  agencyId     String?
+  agency       Agency?   @relation("AgencyMembers", fields: [agencyId], references: [id], onDelete: SetNull)
+
+  leadsAsTelemarketer Lead[] @relation("LeadTelemarketer")
+  leadsAsProducer     Lead[] @relation("LeadProducer")
+
+  teamMembership      TeamMember?              @relation("TeamMemberUser")
+  assignment          TelemarketerAssignment?  @relation("AssignmentUser")
+
+  assignedTasks   FollowUpTask[]   @relation("TaskAssignee")
+  sentMessages    Message[]        @relation("MessageSender")
+  scheduledReports ScheduledReport[] @relation("ReportOwner")
+}
+
+model Agency {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId   String   @unique
+  owner     User     @relation("AgencyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  members            User[]                   @relation("AgencyMembers")
+  leads              Lead[]
+  teamMembers        TeamMember[]
+  assignments        TelemarketerAssignment[]
+  followUpTasks      FollowUpTask[]
+  scheduledReports   ScheduledReport[]
+}
+
+model Lead {
+  id               String        @id @default(cuid())
+  name             String
+  email            String?
+  phone            String
+  address          String?
+  currentCarrier   String?
+  yearsWithCarrier Int?
+  accidentsClaims  Boolean?      @default(false)
+  homeOwnership    HomeOwnership?
+  vehicleYear      String?
+  vehicleMake      String?
+  vehicleModel     String?
+  telemarketerNotes String?
+  agentNotes       String?
+  status           LeadStatus    @default(new)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  agencyId         String
+  agency           Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  telemarketerId   String?
+  telemarketer     User?         @relation("LeadTelemarketer", fields: [telemarketerId], references: [id], onDelete: SetNull)
+
+  producerId       String?
+  producer         User?         @relation("LeadProducer", fields: [producerId], references: [id], onDelete: SetNull)
+
+  followUpTasks    FollowUpTask[]
+
+  @@index([agencyId])
+  @@index([telemarketerId])
+  @@index([producerId])
+  @@index([status])
+}
+
+model TeamMember {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+
+  producerId String   @unique
+  producer   User     @relation("TeamMemberUser", fields: [producerId], references: [id], onDelete: Cascade)
+
+  agencyId   String
+  agency     Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+}
+
+model TelemarketerAssignment {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+
+  telemarketerId String   @unique
+  telemarketer   User     @relation("AssignmentUser", fields: [telemarketerId], references: [id], onDelete: Cascade)
+
+  agencyId       String
+  agency         Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  content        String
+  fileUrl        String?
+  fileName       String?
+  fileType       String?
+  createdAt      DateTime @default(now())
+
+  senderId       String
+  sender         User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model FollowUpTask {
+  id          String    @id @default(cuid())
+  description String
+  dueDate     DateTime?
+  completed   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  leadId      String
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  assigneeId  String?
+  assignee    User?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  agencyId    String
+  agency      Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([agencyId])
+}
+
+model AppointmentRequest {
+  id        String            @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  company   String?
+  message   String?
+  status    AppointmentStatus @default(new)
+  createdAt DateTime          @default(now())
+}
+
+model ScheduledReport {
+  id                          String          @id @default(cuid())
+  reportName                  String
+  frequency                   ReportFrequency
+  sendTime                    String?         // HH:MM
+  daysOfWeek                  Int[]           @default([])
+  dayOfMonth                  Int?
+  recipientEmails             String          // comma-separated
+  includeLeadSummary          Boolean         @default(true)
+  includeStatusBreakdown      Boolean         @default(true)
+  includeTelemarketerPerf     Boolean         @default(false)
+  includeConversionRates      Boolean         @default(false)
+  includeFollowUps            Boolean         @default(false)
+  isActive                    Boolean         @default(true)
+  lastSent                    DateTime?
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
+
+  ownerId   String
+  owner     User   @relation("ReportOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  agencyId  String?
+  agency    Agency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+}

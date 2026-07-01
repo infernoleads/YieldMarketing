@@ -1,0 +1,34 @@
+{
+  "name": "yield-transfers",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Yield Transfers — telemarketing & live-transfer CRM for insurance agencies.",
+  "type": "module",
+  "workspaces": ["client", "server"],
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "scripts": {
+    "postinstall": "prisma generate",
+    "dev": "concurrently -n api,web -c green,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "dev:api": "npm run dev -w server",
+    "dev:web": "npm run dev -w client",
+    "build": "npm run build -w client && prisma generate",
+    "start": "npm run start -w server",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "prisma studio",
+    "reports:send": "node server/src/jobs/sendScheduledReports.js",
+    "setup": "prisma generate && prisma db push && npm run db:seed"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "prisma": "^5.22.0"
+  }
+}
